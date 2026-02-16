@@ -1,0 +1,21 @@
+{
+  "name": "brahma-service",
+  "version": "1.0.0",
+  "description": "Brahma ConsoleKit Integration Service",
+  "main": "index.js",
+  "scripts": {
+    "deploy": "ts-node deploy.ts",
+    "transfer": "ts-node transfer.ts",
+    "balance": "ts-node balance.ts"
+  },
+  "dependencies": {
+    "ethers": "^6.10.0",
+    "dotenv": "^16.4.1",
+    "brahma-console-kit": "^1.0.0"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3",
+    "@types/node": "^20.11.16"
+  }
+}
