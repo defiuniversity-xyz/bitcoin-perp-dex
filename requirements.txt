@@ -23,3 +23,8 @@ APScheduler>=3.10.0
 # Greenlight node integration (optional - when YIELD_SOURCE=node)
 gl-client>=0.3.0
 pyln-grpc-proto>=0.1
+
+# Google Cloud Storage (for SQLite persistence in Cloud Run)
+google-cloud-storage>=2.10.0
+
+# Futures DEX — price oracle HTTP calls (requests already above, no new dep needed)

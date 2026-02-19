@@ -40,6 +40,11 @@ NOSTR_RELAYS = [
 # Ledger
 LEDGER_DB_PATH = os.getenv("LEDGER_DB_PATH", str(BASE_DIR / "data" / "ledger.db"))
 
+# Google Cloud Storage (for SQLite persistence in Cloud Run)
+# Set GCS_BUCKET to enable automatic sync to/from GCS
+GCS_BUCKET = os.getenv("GCS_BUCKET", "")  # e.g., "bitcoin-bank-data"
+GCS_DB_PATH = os.getenv("GCS_DB_PATH", "ledger.db")  # Path within bucket
+
 # Lightning backend: "mock" | "lnbits"
 LIGHTNING_BACKEND = os.getenv("LIGHTNING_BACKEND", "mock")
 
@@ -81,3 +86,24 @@ NWC_RELAYS = [
     for r in os.getenv("NWC_RELAYS", "wss://relay.damus.io,wss://nos.lol").split(",")
     if r.strip()
 ]
+
+# ---------------------------------------------------------------------------
+# Futures DEX
+# ---------------------------------------------------------------------------
+
+FUTURES_DB_PATH = os.getenv("FUTURES_DB_PATH", str(BASE_DIR / "data" / "futures.db"))
+
+# Leverage limits
+MAX_LEVERAGE = int(os.getenv("MAX_LEVERAGE", "20"))
+
+# Margin requirements (as fractions, e.g. 0.05 = 5%)
+INITIAL_MARGIN_PCT = float(os.getenv("INITIAL_MARGIN_PCT", "0.05"))
+MAINTENANCE_MARGIN_PCT = float(os.getenv("MAINTENANCE_MARGIN_PCT", "0.025"))
+
+# Fees
+MAKER_FEE_PCT = float(os.getenv("MAKER_FEE_PCT", "0.0002"))   # 0.02%
+TAKER_FEE_PCT = float(os.getenv("TAKER_FEE_PCT", "0.0005"))   # 0.05%
+INSURANCE_FUND_FEE_PCT = float(os.getenv("INSURANCE_FUND_FEE_PCT", "0.001"))  # 0.1% of profit on close
+
+# Funding rate interval in hours
+FUNDING_INTERVAL_HOURS = int(os.getenv("FUNDING_INTERVAL_HOURS", "8"))

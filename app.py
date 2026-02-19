@@ -665,20 +665,287 @@ def nwc_connect():
     return jsonify({"connection_uri": connection_uri})
 
 
+# =============================================================================
+# Futures DEX Routes  (/api/futures/*)
+# =============================================================================
+
+@app.route("/api/futures/markets", methods=["GET"])
+def futures_markets():
+    """List all supported perpetual markets with live stats."""
+    from futures_engine import MARKETS, get_market_stats
+    result = []
+    for symbol in MARKETS:
+        try:
+            result.append(get_market_stats(symbol))
+        except Exception as e:
+            logger.warning("Failed to get stats for %s: %s", symbol, e)
+    return jsonify(result)
+
+
+@app.route("/api/futures/market/<symbol>", methods=["GET"])
+def futures_market(symbol):
+    """Get market stats: mark price, index price, funding rate, OI."""
+    from futures_engine import MARKETS, get_market_stats
+    if symbol not in MARKETS:
+        return jsonify({"error": "Unknown market"}), 404
+    return jsonify(get_market_stats(symbol))
+
+
+@app.route("/api/futures/orderbook/<symbol>", methods=["GET"])
+def futures_orderbook(symbol):
+    """Aggregated order book: bids and asks."""
+    from futures_ledger import get_open_orders_for_market
+    bids = [o for o in get_open_orders_for_market(symbol, "long") if o["order_type"] == "limit"]
+    asks = [o for o in get_open_orders_for_market(symbol, "short") if o["order_type"] == "limit"]
+
+    def _agg(orders, side):
+        levels: dict = {}
+        for o in orders:
+            price = round(o["price_usd"], 2)
+            remaining = o["size_sats"] - o["filled_size_sats"]
+            levels[price] = levels.get(price, 0) + remaining
+        return [{"price_usd": p, "size_sats": s, "side": side} for p, s in sorted(levels.items(), reverse=(side == "long"))]
+
+    return jsonify({"bids": _agg(bids, "long"), "asks": _agg(asks, "short")})
+
+
+@app.route("/api/futures/collateral/<pubkey>", methods=["GET"])
+def futures_collateral(pubkey):
+    """Get user's futures collateral balance."""
+    from futures_ledger import get_collateral_msats
+    return jsonify({"pubkey": pubkey, "collateral_msats": get_collateral_msats(pubkey)})
+
+
+@app.route("/api/futures/collateral/deposit", methods=["POST"])
+def futures_collateral_deposit():
+    """
+    Transfer sats from the user's bank balance into futures collateral.
+    Requires Nostr-signed challenge for auth.
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid JSON"}), 400
+    pubkey = data.get("pubkey")
+    amount_msats = data.get("amount_msats")
+    signed_challenge = data.get("signed_challenge")
+    if not pubkey or not amount_msats or not signed_challenge:
+        return jsonify({"error": "Missing pubkey, amount_msats, or signed_challenge"}), 400
+
+    now = int(time.time())
+    stored = _challenges.pop(pubkey, None)
+    if not stored or stored["expires_at"] < now:
+        return jsonify({"error": "Missing or expired challenge"}), 401
+    if not verify_signed_challenge(signed_challenge, stored["challenge"], pubkey):
+        return jsonify({"error": "Invalid signature"}), 401
+
+    # Debit bank balance
+    from ledger import debit_withdrawal as bank_debit
+    from futures_ledger import credit_collateral, get_or_create_futures_account
+
+    bank_balance = get_balance_msats(pubkey)
+    if bank_balance < amount_msats:
+        return jsonify({"error": "Insufficient bank balance"}), 400
+
+    # Use a virtual invoice_id for the ledger record
+    import uuid
+    tx_id = f"futures-deposit-{uuid.uuid4()}"
+    result = bank_debit(pubkey, amount_msats, tx_id)
+    if not result:
+        return jsonify({"error": "Failed to debit bank balance"}), 500
+
+    acc = credit_collateral(pubkey, amount_msats)
+    publish_balance_update(pubkey)
+    return jsonify({"collateral_msats": acc["collateral_msats"]})
+
+
+@app.route("/api/futures/collateral/withdraw", methods=["POST"])
+def futures_collateral_withdraw():
+    """Transfer futures collateral back to bank balance."""
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid JSON"}), 400
+    pubkey = data.get("pubkey")
+    amount_msats = data.get("amount_msats")
+    signed_challenge = data.get("signed_challenge")
+    if not pubkey or not amount_msats or not signed_challenge:
+        return jsonify({"error": "Missing pubkey, amount_msats, or signed_challenge"}), 400
+
+    now = int(time.time())
+    stored = _challenges.pop(pubkey, None)
+    if not stored or stored["expires_at"] < now:
+        return jsonify({"error": "Missing or expired challenge"}), 401
+    if not verify_signed_challenge(signed_challenge, stored["challenge"], pubkey):
+        return jsonify({"error": "Invalid signature"}), 401
+
+    from futures_ledger import debit_collateral
+    result = debit_collateral(pubkey, amount_msats)
+    if not result:
+        return jsonify({"error": "Insufficient futures collateral"}), 400
+
+    import uuid
+    credit_deposit(pubkey, amount_msats, f"futures-withdraw-{uuid.uuid4()}")
+    publish_balance_update(pubkey)
+    return jsonify({"collateral_msats": result["collateral_msats"]})
+
+
+@app.route("/api/futures/order", methods=["POST"])
+def futures_place_order():
+    """
+    Place a new order. Body must contain a Nostr-signed Kind 30051 event.
+    The event content encodes: market, side, order_type, size_sats, price_usd, leverage.
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid JSON"}), 400
+
+    nostr_event = data.get("nostr_event")
+    if not nostr_event:
+        return jsonify({"error": "Missing nostr_event"}), 400
+
+    # Validate signature
+    if not verify_event_signature(nostr_event):
+        return jsonify({"error": "Invalid Nostr event signature"}), 401
+    if nostr_event.get("kind") != 30051:
+        return jsonify({"error": "Expected Kind 30051"}), 400
+
+    pubkey = nostr_event["pubkey"]
+    try:
+        params = json.loads(nostr_event.get("content", "{}"))
+    except (json.JSONDecodeError, TypeError):
+        return jsonify({"error": "Invalid event content JSON"}), 400
+
+    from futures_engine import place_order
+    order, err = place_order(
+        pubkey=pubkey,
+        market=params.get("market", "BTC-USD-PERP"),
+        side=params.get("side"),
+        order_type=params.get("order_type", "limit"),
+        size_sats=int(params.get("size_sats", 0)),
+        leverage=int(params.get("leverage", 1)),
+        price_usd=params.get("price_usd"),
+        nostr_event_id=nostr_event.get("id"),
+    )
+    if err:
+        return jsonify({"error": err}), 400
+
+    from futures_nostr import relay_order_event
+    relay_order_event(order, nostr_event)
+    return jsonify(order), 201
+
+
+@app.route("/api/futures/order/<order_id>", methods=["DELETE"])
+def futures_cancel_order(order_id):
+    """Cancel an open order. Body must contain a Nostr-signed cancellation event."""
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid JSON"}), 400
+
+    nostr_event = data.get("nostr_event")
+    if not nostr_event or not verify_event_signature(nostr_event):
+        return jsonify({"error": "Invalid or missing Nostr signature"}), 401
+
+    pubkey = nostr_event["pubkey"]
+    from futures_engine import cancel_order
+    ok, err = cancel_order(pubkey, order_id)
+    if not ok:
+        return jsonify({"error": err}), 400
+    return jsonify({"cancelled": order_id})
+
+
+@app.route("/api/futures/orders/<pubkey>", methods=["GET"])
+def futures_orders(pubkey):
+    """Get open orders for a user."""
+    from futures_ledger import get_orders_for_pubkey
+    status = request.args.get("status", "open")
+    return jsonify(get_orders_for_pubkey(pubkey, status))
+
+
+@app.route("/api/futures/positions/<pubkey>", methods=["GET"])
+def futures_positions(pubkey):
+    """Get open positions with live PnL for a user."""
+    from futures_ledger import get_positions_for_pubkey
+    from futures_engine import enrich_position
+    positions = get_positions_for_pubkey(pubkey)
+    return jsonify([enrich_position(p) for p in positions])
+
+
+@app.route("/api/futures/position/close", methods=["POST"])
+def futures_close_position():
+    """Close a position at mark price. Requires signed Nostr event for auth."""
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid JSON"}), 400
+
+    nostr_event = data.get("nostr_event")
+    if not nostr_event or not verify_event_signature(nostr_event):
+        return jsonify({"error": "Invalid or missing Nostr signature"}), 401
+
+    pubkey = nostr_event["pubkey"]
+    position_id = data.get("position_id")
+    if not position_id:
+        return jsonify({"error": "Missing position_id"}), 400
+
+    from futures_engine import close_position
+    ok, err, result = close_position(pubkey, position_id)
+    if not ok:
+        return jsonify({"error": err}), 400
+    return jsonify(result)
+
+
+@app.route("/api/futures/trades/<symbol>", methods=["GET"])
+def futures_trades(symbol):
+    """Recent trades for a market."""
+    from futures_ledger import get_recent_trades
+    limit = min(int(request.args.get("limit", 50)), 200)
+    return jsonify(get_recent_trades(symbol, limit))
+
+
+@app.route("/api/futures/funding/<symbol>", methods=["GET"])
+def futures_funding(symbol):
+    """Funding rate history for a market."""
+    from futures_ledger import get_funding_rate_history
+    limit = min(int(request.args.get("limit", 48)), 200)
+    return jsonify(get_funding_rate_history(symbol, limit))
+
+
+@app.route("/api/futures/ohlcv/<symbol>", methods=["GET"])
+def futures_ohlcv(symbol):
+    """OHLCV candle data for price chart."""
+    from futures_ledger import get_ohlcv
+    since = int(request.args.get("since", int(time.time()) - 86400))
+    bucket = int(request.args.get("bucket", 300))
+    return jsonify(get_ohlcv(symbol, since, bucket))
+
+
 # --- Init ---
 
 @app.before_request
 def before_first_request():
     init_db()
+    from futures_ledger import init_futures_db
+    init_futures_db()
 
 
 if __name__ == "__main__":
     init_db()
+    from futures_ledger import init_futures_db
+    init_futures_db()
     if config.NWC_ENABLED:
         from nwc_listener import start_nwc_listener
         start_nwc_listener()
     if config.YIELD_SOURCE == "node" or (config.YIELD_POOL_MSATS and config.YIELD_POOL_MSATS > 0):
         from yield_scheduler import start_scheduler
         start_scheduler()
+    # Start futures DEX schedulers
+    from apscheduler.schedulers.background import BackgroundScheduler
+    _futures_scheduler = BackgroundScheduler()
+    from funding_rate import schedule_funding_job
+    from liquidation_engine import schedule_liquidation_job
+    schedule_funding_job(_futures_scheduler)
+    schedule_liquidation_job(_futures_scheduler)
+    _futures_scheduler.start()
+    # Publish initial market definitions to Nostr
+    from futures_nostr import publish_all_markets
+    publish_all_markets()
     port = int(__import__("os").environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=config.DEBUG)

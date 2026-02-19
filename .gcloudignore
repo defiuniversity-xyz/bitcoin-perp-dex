@@ -1,0 +1,89 @@
+# This file specifies files that are *not* uploaded to Google Cloud
+# using gcloud. It follows the same syntax as .gitignore, with the addition of
+# "#!include" directives (which insert the entries of the given .gitignore-style
+# file at that point).
+
+#!include .gitignore
+
+# Git files
+.git/
+.gitignore
+
+# All node_modules directories (reinstalled during Docker build)
+**/node_modules/
+node_modules/
+brahma-service/node_modules/
+frontend/node_modules/
+frontend/src/
+frontend/public/
+frontend/.env*
+frontend/tsconfig*.json
+frontend/vite.config.ts
+frontend/tailwind.config.js
+frontend/postcss.config.js
+frontend/eslint.config.js
+frontend/package*.json
+
+# Keep only the built frontend dist if needed
+# For backend-only deployment, exclude all frontend
+frontend/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info
+dist/
+build/
+*.py[cod]
+
+# Local database (will be synced to/from GCS)
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Environment and secrets
+.env
+.env.*
+*.key
+*.pem
+*.cert
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Documentation
+docs/
+README.md
+*.md
+!requirements.txt
+
+# Testing
+test/
+tests/
+*.test.py
+test_*.py
+
+# Deployment scripts
+deploy-*.sh
+generate-nostr-keys.sh
+test-deployment.sh
+
+# Misc large/unnecessary files
+*.sh
+DEPLOYMENT.md
+QUICKSTART.md
+DEPLOYMENT_SUMMARY.md
+.nostr-keys.txt
+.backend-url.txt
+.deployment-urls.txt

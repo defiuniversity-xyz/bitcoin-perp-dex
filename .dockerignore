@@ -1,0 +1,13 @@
+.git
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+frontend/node_modules
+frontend/dist
+brahma-service/node_modules
+.DS_Store
+.env

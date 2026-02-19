@@ -1,26 +1,65 @@
-# Local data
-data/
-*.db
+# Secrets & keys
+.env
+.env.*
+.nostr-keys.txt
+.backend-url.txt
 
 # Python
 __pycache__/
-*.pyc
-.env
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
 venv/
-.pytest_cache/
+.venv/
+*.egg
 
-# Node.js
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# Node / frontend
 node_modules/
-npm-debug.log
-yarn-error.log
-
-# Frontend Build
+dex-frontend/node_modules/
+frontend/node_modules/
+dex-frontend/dist/
 frontend/dist/
-frontend/coverage/
+*.tsbuildinfo
 
-# Brahma Service
-brahma-service/node_modules/
-brahma-service/dist/
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+.firebaserc
+# (keep firebase.json)
 
-# System
+# Google Cloud
+.gcloud/
+gcloud-key.json
+service-account*.json
+
+# macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Coverage
+coverage/
+.nyc_output/

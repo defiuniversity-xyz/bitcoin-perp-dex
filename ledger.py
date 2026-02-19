@@ -12,13 +12,17 @@ from pathlib import Path
 from typing import Optional, List, Tuple
 
 import config
+from storage_wrapper import get_storage_wrapper, sync_after_write
 
 logger = logging.getLogger(__name__)
 
 
 def _get_conn():
-    Path(config.LEDGER_DB_PATH).parent.mkdir(parents=True, exist_ok=True)
-    return sqlite3.connect(config.LEDGER_DB_PATH)
+    # Ensure DB is downloaded from GCS if enabled
+    wrapper = get_storage_wrapper()
+    db_path = wrapper.ensure_local()
+    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+    return sqlite3.connect(db_path)
 
 
 def init_db():
@@ -72,6 +76,9 @@ def init_db():
             )
         """)
         conn.commit()
+        
+    # Sync to GCS after schema initialization
+    sync_after_write()
 
 
 @contextmanager
@@ -228,6 +235,7 @@ def credit_deposit(
                VALUES (?, ?, 'deposit', ?, ?, ?, ?, ?)""",
             (tx_id, pubkey, amount_msats, new_balance, invoice_id, zap_request_id, now),
         )
+    sync_after_write()
     return {
         "tx_id": tx_id,
         "pubkey": pubkey,
@@ -267,6 +275,7 @@ def debit_withdrawal(
                VALUES (?, ?, 'withdrawal', ?, ?, ?, ?)""",
             (tx_id, pubkey, -amount_msats, new_balance, invoice_id, now),
         )
+    sync_after_write()
     return {
         "tx_id": tx_id,
         "pubkey": pubkey,
@@ -340,6 +349,7 @@ def transfer_internal(
             (tx_id_credit, to_pubkey, amount_msats, to_balance_after, from_pubkey, now),
         )
 
+    sync_after_write()
     return {
         "from_pubkey": from_pubkey,
         "to_pubkey": to_pubkey,
@@ -379,6 +389,7 @@ def savings_add(pubkey: str, amount_msats: int) -> Optional[dict]:
                VALUES (?, ?, 'savings_add', ?, ?, ?)""",
             (tx_id, pubkey, -amount_msats, spendable_after, now),
         )
+    sync_after_write()
     return {
         "tx_id": tx_id,
         "pubkey": pubkey,
@@ -418,6 +429,7 @@ def savings_remove(pubkey: str, amount_msats: int) -> Optional[dict]:
                VALUES (?, ?, 'savings_remove', ?, ?, ?)""",
             (tx_id, pubkey, amount_msats, spendable_after, now),
         )
+    sync_after_write()
     return {
         "tx_id": tx_id,
         "pubkey": pubkey,
@@ -437,6 +449,7 @@ def nwc_register(client_pubkey: str, user_pubkey: str) -> None:
             "INSERT OR REPLACE INTO nwc_connections (client_pubkey, user_pubkey, created_at) VALUES (?, ?, ?)",
             (client_pubkey, user_pubkey, now),
         )
+    sync_after_write()
 
 
 def nwc_lookup_user(client_pubkey: str) -> Optional[str]:
@@ -475,6 +488,7 @@ def create_brahma_account(pubkey: str, console_address: str, chain_id: int = 845
             "INSERT INTO brahma_accounts (pubkey, console_address, chain_id, created_at) VALUES (?, ?, ?, ?)",
             (pubkey, console_address, chain_id, now)
         )
+    sync_after_write()
     return {
         "pubkey": pubkey,
         "console_address": console_address,

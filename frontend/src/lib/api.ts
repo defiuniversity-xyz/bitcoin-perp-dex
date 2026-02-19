@@ -1,5 +1,6 @@
-const API_BASE_URL = (import.meta.env.VITE_API_BASE as string | undefined) || '';
-const API_BASE = API_BASE_URL ? `${API_BASE_URL.replace(/\/$/, '')}/api` : '/api';
+import { getApiUrl } from './config';
+
+const API_BASE = getApiUrl('/api');
 
 export async function getBalance(
   pubkey: string
