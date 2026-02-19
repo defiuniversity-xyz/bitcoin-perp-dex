@@ -2,12 +2,10 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useWalletStore } from '../stores/useWalletStore'
 import { usePositionStore } from '../stores/usePositionStore'
-import { getTradesForPubkey, getFundingHistory, type Trade } from '../lib/futures-api'
+import { getFundingHistory, type Trade } from '../lib/futures-api'
 
-// Minimal typed stub for trades-by-pubkey (not in the main API yet — uses existing trades endpoint)
+// Placeholder until backend exposes a user-specific trades endpoint
 async function getTradesForPubkey(_pubkey: string): Promise<Trade[]> {
-  // The backend /api/futures/trades returns market trades, not user-specific.
-  // This is a placeholder — wire up a user-specific endpoint in a future iteration.
   return []
 }
 

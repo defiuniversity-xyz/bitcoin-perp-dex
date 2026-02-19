@@ -1,8 +1,11 @@
 # Use official Python runtime as a parent image
 FROM python:3.9-slim
 
-# Install Node.js (for brahma-service mock)
-RUN apt-get update && apt-get install -y nodejs npm && rm -rf /var/lib/apt/lists/*
+# Install system deps: Node.js (for brahma-service mock) + secp256k1 build deps
+RUN apt-get update && apt-get install -y \
+    nodejs npm \
+    pkg-config libsecp256k1-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # Set the working directory
 WORKDIR /app

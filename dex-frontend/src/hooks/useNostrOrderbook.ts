@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { SimplePool } from 'nostr-tools'
+import { SimplePool, type Filter } from 'nostr-tools'
 import { DEX_RELAYS } from '../lib/nostr-orders'
 
 export interface OrderBookLevel {
@@ -34,7 +34,7 @@ export function useNostrOrderbook(market: string) {
 
     const sub = pool.subscribeMany(
       DEX_RELAYS,
-      [{ kinds: [30051], '#market': [market] }],
+      { kinds: [30051], '#market': [market] } as Filter,
       {
         onevent(event: NostrOrderEvent) {
           try {

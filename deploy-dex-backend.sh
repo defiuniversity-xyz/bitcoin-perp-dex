@@ -14,14 +14,13 @@ SERVICE_NAME="bitcoin-perp-dex-api"
 REGION="us-central1"
 IMAGE="gcr.io/${PROJECT_ID}/${SERVICE_NAME}:latest"
 
-echo "==> Building Docker image for ${SERVICE_NAME}"
+echo "==> Building Docker image for ${SERVICE_NAME} (linux/amd64 for Cloud Run)"
 cd "$(dirname "$0")"
-docker build -t "${IMAGE}" .
-
-echo "==> Pushing image to GCR"
-docker push "${IMAGE}"
+docker buildx build --platform linux/amd64 -t "${IMAGE}" --push .
+echo "==> Image pushed to GCR (via buildx)"
 
 echo "==> Deploying to Cloud Run"
+# Use ^|^ as separator so comma-containing values (e.g. NOSTR_RELAYS) are handled safely
 gcloud run deploy "${SERVICE_NAME}" \
   --image "${IMAGE}" \
   --platform managed \
@@ -32,18 +31,7 @@ gcloud run deploy "${SERVICE_NAME}" \
   --max-instances 10 \
   --memory 512Mi \
   --cpu 1 \
-  --set-env-vars "\
-LIGHTNING_BACKEND=mock,\
-GCS_BUCKET=${PROJECT_ID}-perp-dex-data,\
-MAX_LEVERAGE=20,\
-INITIAL_MARGIN_PCT=0.05,\
-MAINTENANCE_MARGIN_PCT=0.025,\
-MAKER_FEE_PCT=0.0002,\
-TAKER_FEE_PCT=0.0005,\
-INSURANCE_FUND_FEE_PCT=0.001,\
-FUNDING_INTERVAL_HOURS=8,\
-NOSTR_RELAYS=wss://relay.damus.io,wss://nos.lol,\
-NWC_ENABLED=false" \
+  --set-env-vars "^|^LIGHTNING_BACKEND=mock|GCS_BUCKET=${PROJECT_ID}-perp-dex-data|MAX_LEVERAGE=20|INITIAL_MARGIN_PCT=0.05|MAINTENANCE_MARGIN_PCT=0.025|MAKER_FEE_PCT=0.0002|TAKER_FEE_PCT=0.0005|INSURANCE_FUND_FEE_PCT=0.001|FUNDING_INTERVAL_HOURS=8|NOSTR_RELAYS=wss://relay.damus.io,wss://nos.lol|NWC_ENABLED=false" \
   --project "${PROJECT_ID}"
 
 echo "==> Getting service URL"
