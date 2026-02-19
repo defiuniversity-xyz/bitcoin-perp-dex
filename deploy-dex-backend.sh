@@ -13,10 +13,9 @@ fi
 SERVICE_NAME="bitcoin-perp-dex-api"
 REGION="us-central1"
 IMAGE="gcr.io/${PROJECT_ID}/${SERVICE_NAME}:latest"
-BACKEND_DIR="$(dirname "$0")/bitcoin-bank-nostr copy"
 
 echo "==> Building Docker image for ${SERVICE_NAME}"
-cd "${BACKEND_DIR}"
+cd "$(dirname "$0")"
 docker build -t "${IMAGE}" .
 
 echo "==> Pushing image to GCR"
